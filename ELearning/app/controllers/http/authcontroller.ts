@@ -8,7 +8,9 @@ export default class AuthController {
   // 🟢 Register user baru
   public async register({ request, response }: HttpContext) {
     try {
+      console.log('Register endpoint hit')
       const { name, email, password } = request.all()
+      console.log('Request data:', { name, email, password: '***' })
       
       if (!name || !email || !password) {
         return response.badRequest({ message: 'Name, email, dan password wajib diisi' })
@@ -18,9 +20,11 @@ export default class AuthController {
       if (existing) return response.badRequest({ message: 'Email sudah terdaftar' })
 
       const user = await User.create({ name, email, password })
-      return response.created({ message: 'Registrasi berhasil', user })
+      console.log('User created successfully')
+      return response.created({ message: 'Registrasi berhasil', user: { name: user.name, email: user.email } })
     } catch (error) {
-      return response.internalServerError({ message: 'Terjadi kesalahan', error })
+      console.error('Register error:', error)
+      return response.internalServerError({ message: 'Terjadi kesalahan', error: error.message })
     }
   }
 

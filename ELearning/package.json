@@ -60,7 +60,7 @@
     "env": "^0.0.2",
     "jsonwebtoken": "^9.0.2",
     "luxon": "^3.7.2",
-    "mongoose": "^8.19.1",
+    "mongoose": "^8.20.1",
     "reflect-metadata": "^0.2.2"
   },
   "hotHook": {
