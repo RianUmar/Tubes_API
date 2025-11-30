@@ -2,17 +2,26 @@ const API_BASE = 'http://localhost:3333';
 let currentUser = null;
 let authToken = null;
 
-// Check if user is logged in on page load
+// --- INITIALIZATION ---
 document.addEventListener('DOMContentLoaded', function() {
     const token = localStorage.getItem('authToken');
     if (token) {
         authToken = token;
         showDashboard();
         updateNavigation(true);
+    } else {
+        showLogin();
     }
 });
 
-// Navigation functions
+// --- NAVIGATION ---
+function hideAllSections() {
+    ['loginForm', 'registerForm', 'dashboard'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+    });
+}
+
 function showLogin() {
     hideAllSections();
     document.getElementById('loginForm').style.display = 'block';
@@ -29,222 +38,197 @@ function showDashboard() {
     loadCourses();
 }
 
-function hideAllSections() {
-    document.getElementById('loginForm').style.display = 'none';
-    document.getElementById('registerForm').style.display = 'none';
-    document.getElementById('dashboard').style.display = 'none';
-}
-
 function updateNavigation(isLoggedIn) {
-    const loginBtn = document.querySelector('nav button:nth-child(1)');
-    const registerBtn = document.querySelector('nav button:nth-child(2)');
     const dashboardBtn = document.getElementById('dashboardBtn');
     const logoutBtn = document.getElementById('logoutBtn');
+    const navButtons = document.querySelectorAll('nav button:not(#dashboardBtn):not(#logoutBtn)');
 
     if (isLoggedIn) {
-        loginBtn.style.display = 'none';
-        registerBtn.style.display = 'none';
-        dashboardBtn.style.display = 'inline-block';
-        logoutBtn.style.display = 'inline-block';
+        navButtons.forEach(btn => btn.style.display = 'none');
+        if(dashboardBtn) dashboardBtn.style.display = 'inline-block';
+        if(logoutBtn) logoutBtn.style.display = 'inline-block';
     } else {
-        loginBtn.style.display = 'inline-block';
-        registerBtn.style.display = 'inline-block';
-        dashboardBtn.style.display = 'none';
-        logoutBtn.style.display = 'none';
+        navButtons.forEach(btn => btn.style.display = 'inline-block');
+        if(dashboardBtn) dashboardBtn.style.display = 'none';
+        if(logoutBtn) logoutBtn.style.display = 'none';
     }
 }
 
-// Auth functions
+// --- AUTHENTICATION ---
 async function login(event) {
     event.preventDefault();
-    
     const email = document.getElementById('loginEmail').value;
     const password = document.getElementById('loginPassword').value;
 
     try {
-        const response = await fetch(`${API_BASE}/users/login`, {
+        const res = await fetch(`${API_BASE}/users/login`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email, password })
         });
-
-        const data = await response.json();
-
-        if (response.ok) {
+        const data = await res.json();
+        if (res.ok) {
             authToken = data.token;
-            currentUser = data.user;
             localStorage.setItem('authToken', authToken);
-            
-            showAlert('Login successful!', 'success');
+            showAlert('Login Berhasil!', 'success');
             updateNavigation(true);
             showDashboard();
         } else {
-            showAlert(data.message || 'Login failed', 'error');
+            showAlert(data.message || 'Login Gagal', 'error');
         }
-    } catch (error) {
-        showAlert('Network error. Please try again.', 'error');
-    }
+    } catch (e) { showAlert('Error koneksi server', 'error'); }
 }
 
 async function register(event) {
     event.preventDefault();
-    
     const name = document.getElementById('regName').value;
     const email = document.getElementById('regEmail').value;
     const password = document.getElementById('regPassword').value;
 
     try {
-        const response = await fetch(`${API_BASE}/users/register`, {
+        const res = await fetch(`${API_BASE}/users/register`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ name, email, password })
         });
-
-        const data = await response.json();
-
-        if (response.ok) {
-            showAlert('Registration successful! Please login.', 'success');
+        const data = await res.json();
+        if (res.ok) {
+            showAlert('Registrasi berhasil, silakan login', 'success');
             showLogin();
-            document.getElementById('registerForm').reset();
         } else {
-            showAlert(data.message || 'Registration failed', 'error');
+            showAlert(data.message || 'Gagal Register', 'error');
         }
-    } catch (error) {
-        showAlert('Network error. Please try again.', 'error');
-    }
+    } catch (e) { showAlert('Error koneksi server', 'error'); }
 }
 
 function logout() {
     authToken = null;
-    currentUser = null;
     localStorage.removeItem('authToken');
     updateNavigation(false);
     showLogin();
-    showAlert('Logged out successfully', 'success');
 }
 
-// Course functions
+// --- COURSES ---
 async function loadCourses() {
     try {
-        const response = await fetch(`${API_BASE}/api/courses`);
-        const data = await response.json();
+        const res = await fetch(`${API_BASE}/api/courses`);
+        const data = await res.json();
+        const list = document.getElementById('coursesList');
+        if (!list) return;
 
-        const coursesList = document.getElementById('coursesList');
-        
-        if (response.ok && data.length > 0) {
-            coursesList.innerHTML = data.map(course => `
-                <div class="course-item">
-                    <h4>${course.title}</h4>
-                    <p>${course.description}</p>
-                    <small>Created: ${new Date(course.createdAt).toLocaleDateString()}</small>
+        if (res.ok && data.length > 0) {
+            list.innerHTML = data.map(c => `
+                <div style="background:white; padding:15px; border-radius:8px; margin-bottom:10px; border:1px solid #eee;">
+                    <h4 style="margin:0 0 5px 0;">${c.title}</h4>
+                    <p style="margin:0; color:#666; font-size:14px;">${c.description}</p>
                 </div>
             `).join('');
         } else {
-            coursesList.innerHTML = '<p>No courses available</p>';
+            list.innerHTML = '<p style="text-align:center; color:#999;">Belum ada materi.</p>';
         }
-    } catch (error) {
-        document.getElementById('coursesList').innerHTML = '<p>Error loading courses</p>';
-    }
+    } catch (e) { console.error(e); }
 }
 
 async function addCourse(event) {
     event.preventDefault();
+    if (!authToken) return showAlert('Harap login dulu', 'error');
     
-    if (!authToken) {
-        showAlert('Please login first', 'error');
-        return;
-    }
-
     const title = document.getElementById('courseTitle').value;
     const description = document.getElementById('courseDescription').value;
 
     try {
-        const response = await fetch(`${API_BASE}/api/courses`, {
+        const res = await fetch(`${API_BASE}/api/courses`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${authToken}`
-            },
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
             body: JSON.stringify({ title, description })
         });
-
-        const data = await response.json();
-
-        if (response.ok) {
-            showAlert('Course added successfully!', 'success');
-            document.querySelector('#dashboard form').reset();
+        if (res.ok) {
+            showAlert('Materi ditambahkan', 'success');
+            document.querySelector('.course-form form').reset();
             loadCourses();
-        } else {
-            showAlert(data.message || 'Failed to add course', 'error');
         }
-    } catch (error) {
-        showAlert('Network error. Please try again.', 'error');
-    }
+    } catch (e) { showAlert('Gagal menambah materi', 'error'); }
 }
 
-// Chat functions
+// --- CHATBOT (AI + YOUTUBE) ---
 async function sendMessage(event) {
-    event.preventDefault();
+    if(event) event.preventDefault();
     
     const input = document.getElementById('chatInput');
     const message = input.value.trim();
-    
     if (!message) return;
 
-    // Add user message to chat
-    addMessageToChat(message, 'user');
+    addMessage(message, 'user');
     input.value = '';
 
+    const loadingId = addMessage('Sedang mencari video...', 'ai');
+
     try {
-        const response = await fetch(`${API_BASE}/api/chat`, {
+        const res = await fetch(`${API_BASE}/api/chat`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ message })
         });
+        const data = await res.json();
+        
+        // Hapus loading
+        const loadingEl = document.getElementById(loadingId);
+        if(loadingEl) loadingEl.remove();
 
-        const data = await response.json();
+        if (res.ok) {
+            addMessage(data.reply, 'ai');
 
-        if (response.ok) {
-            addMessageToChat(data.response || 'AI response received', 'ai');
-        } else {
-            addMessageToChat('Sorry, I could not process your request.', 'ai');
+            // Render Video 16:9
+            if (data.videos && data.videos.length > 0) {
+                const videoHtml = data.videos.map(v => `
+                    <div style="margin-top:12px; background:white; border-radius:10px; overflow:hidden; border:1px solid #eee;">
+                        <a href="${v.url}" target="_blank" style="text-decoration:none; display:block;">
+                            <div style="width:100%; aspect-ratio:16/9; background:#000;">
+                                <img src="${v.thumbnail}" style="width:100%; height:100%; object-fit:cover;">
+                            </div>
+                            <div style="padding:10px;">
+                                <p style="font-size:13px; font-weight:600; color:#333; margin:0; line-height:1.4;">📺 ${v.title}</p>
+                            </div>
+                        </a>
+                    </div>
+                `).join('');
+                addMessage(videoHtml, 'ai', true);
+            }
         }
-    } catch (error) {
-        addMessageToChat('Network error. Please try again.', 'ai');
+    } catch (e) {
+        const loadingEl = document.getElementById(loadingId);
+        if(loadingEl) loadingEl.remove();
+        addMessage('Server error.', 'ai');
     }
 }
 
-function addMessageToChat(message, sender) {
-    const chatMessages = document.getElementById('chatMessages');
-    const messageDiv = document.createElement('div');
-    messageDiv.className = `message ${sender}-message`;
-    messageDiv.textContent = message;
+function addMessage(content, type, isHtml = false) {
+    const container = document.getElementById('chatMessages');
+    if(!container) return;
+
+    const div = document.createElement('div');
+    div.className = `message ${type}-message`;
+    div.id = 'msg-' + Date.now();
     
-    chatMessages.appendChild(messageDiv);
-    chatMessages.scrollTop = chatMessages.scrollHeight;
+    if(isHtml) {
+        div.innerHTML = content;
+        div.style.background = 'transparent';
+        div.style.padding = 0;
+        div.style.boxShadow = 'none';
+    } else {
+        div.textContent = content;
+    }
+    
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+    return div.id;
 }
 
-// Utility functions
-function showAlert(message, type) {
-    // Remove existing alerts
-    const existingAlert = document.querySelector('.alert');
-    if (existingAlert) {
-        existingAlert.remove();
-    }
-
+// --- UTILS ---
+function showAlert(msg, type) {
     const alert = document.createElement('div');
     alert.className = `alert alert-${type}`;
-    alert.textContent = message;
-    
-    document.querySelector('main').insertBefore(alert, document.querySelector('main').firstChild);
-    
-    setTimeout(() => {
-        alert.remove();
-    }, 5000);
+    alert.textContent = msg;
+    document.body.appendChild(alert);
+    setTimeout(() => alert.remove(), 3000);
 }

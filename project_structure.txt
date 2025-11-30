@@ -1,0 +1,56 @@
+
+ELearning/
+|-- app
+|   |-- controllers
+|   |   +-- http
+|   |       |-- authcontroller.ts
+|   |       |-- chatcontroller.ts
+|   |       +-- coursescontroller.ts
+|   |-- exceptions
+|   |   +-- handler.ts
+|   |-- middleware
+|   |   |-- container_bindings_middleware.ts
+|   |   |-- force_json_response_middleware.ts
+|   |   +-- jwtauth.ts
+|   +-- models
+|       |-- course.ts
+|       |-- course_mongoose.ts
+|       +-- user.ts
+|-- bin
+|   |-- console.ts
+|   |-- server.ts
+|   +-- test.ts
+|-- config
+|   |-- app.ts
+|   |-- bodyparser.ts
+|   |-- cors.ts
+|   |-- hash.ts
+|   +-- logger.ts
+|-- public
+|   |-- app.js
+|   |-- dashboard.html
+|   |-- index.html
+|   |-- login.html
+|   |-- register.html
+|   +-- style.css
+|-- start
+|   |-- database.ts
+|   |-- env.ts
+|   |-- kernel.ts
+|   |-- mongoose.ts
+|   +-- routes.ts
+|-- tests
+|   +-- bootstrap.ts
+|-- .editorconfig
+|-- .env
+|-- .env.example
+|-- .gitignore
+|-- ace.js
+|-- adonisrc.ts
+|-- eslint.config.js
+|-- jsonwebtoken.d.ts
+|-- package-lock.json
+|-- package.json
++-- tsconfig.json
+
+Tree diagram saved!
