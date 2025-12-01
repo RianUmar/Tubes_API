@@ -1,120 +1,61 @@
 import router from '@adonisjs/core/services/router'
-// Import ChatController secara lazy loading
+
+// Import Controller (Lazy Load)
 const ChatController = () => import('#controllers/http/chatcontroller')
+const CoursesController = () => import('#controllers/http/coursescontroller') // Pastikan ini ada
 
-// ROOT ROUTE - Serve Frontend
-router.get('/', ({ response }) => {
-  return response.download('public/index.html')
-})
+// ROOT & STATIC FILES
+router.get('/', ({ response }) => response.download('public/index.html'))
+router.get('/style.css', ({ response }) => response.download('public/style.css'))
+router.get('/app.js', ({ response }) => response.download('public/app.js'))
 
-// STATIC FILES
-router.get('/style.css', ({ response }) => {
-  return response.download('public/style.css')
-})
-
-router.get('/app.js', ({ response }) => {
-  return response.download('public/app.js')
-})
-
-// TEST ROUTES
-router.get('/test-get', ({ response }) => {
-  return response.json({ message: 'GET endpoint works' })
-})
-
-// REGISTER ROUTE - Save to MongoDB
+// AUTH ROUTES
 router.post('/users/register', async ({ request, response }) => {
   try {
-    console.log('🔥 Register endpoint called')
     const User = (await import('#models/user')).default
     const { name, email, password } = request.all()
-    
-    if (!name || !email || !password) {
-      return response.badRequest({ message: 'Name, email, dan password wajib diisi' })
-    }
+    if (!name || !email || !password) return response.badRequest({ message: 'Data tidak lengkap' })
     
     const existing = await User.findOne({ email })
-    if (existing) {
-      return response.badRequest({ message: 'Email sudah terdaftar' })
-    }
+    if (existing) return response.badRequest({ message: 'Email sudah terdaftar' })
     
     const user = await User.create({ name, email, password })
-    
-    return response.created({ 
-      message: 'Registrasi berhasil', 
-      user: { id: user._id, name: user.name, email: user.email } 
-    })
+    return response.created({ message: 'Registrasi berhasil', user: { id: user._id, name: user.name, email: user.email } })
   } catch (error) {
-    return response.internalServerError({ message: 'Terjadi kesalahan', error: error.message })
+    return response.internalServerError({ message: 'Error server', error: error.message })
   }
 })
 
-// LOGIN ROUTE
 router.post('/users/login', async ({ request, response }) => {
   try {
     const User = (await import('#models/user')).default
     const { email, password } = request.all()
-    
-    if (!email || !password) {
-      return response.badRequest({ message: 'Email dan password wajib diisi' })
-    }
+    if (!email || !password) return response.badRequest({ message: 'Email & Password wajib' })
     
     const user = await User.findOne({ email })
-    if (!user) {
-      return response.unauthorized({ message: 'Email tidak ditemukan' })
+    if (!user || !(await user.comparePassword(password))) {
+      return response.unauthorized({ message: 'Email atau Password salah' })
     }
     
-    const isMatch = await user.comparePassword(password)
-    if (!isMatch) {
-      return response.unauthorized({ message: 'Password salah' })
-    }
-    
+    // Di real app, gunakan JWT library beneran. Di sini kita simulasi token.
+    // Kita kirim ID user agar frontend bisa menyimpannya.
     return response.ok({ 
       message: 'Login berhasil', 
-      token: 'dummy-jwt-token',
+      token: 'dummy-jwt-token', // Di app asli ini harus JWT string
       user: { id: user._id, name: user.name, email: user.email }
     })
   } catch (error) {
-    return response.internalServerError({ message: 'Terjadi kesalahan', error: error.message })
+    return response.internalServerError({ message: 'Error server', error: error.message })
   }
 })
 
-// GET USER ROUTES
-router.get('/users/all', async ({ response }) => {
-  try {
-    const User = (await import('#models/user')).default
-    const users = await User.find().select('-password')
-    return response.json({ users })
-  } catch (error) {
-    return response.internalServerError({ error: error.message })
-  }
-})
+// --- COURSES CRUD ROUTES ---
+router.get('/api/courses', [CoursesController, 'index'])
+router.post('/api/courses', [CoursesController, 'store'])
 
-// COURSES ENDPOINTS
-router.get('/api/courses', async ({ response }) => {
-  try {
-    const Course = (await import('#models/course_mongoose')).default
-    const courses = await Course.find()
-    return response.json(courses)
-  } catch (error) {
-    return response.json([])
-  }
-})
+// Route Baru untuk Update & Delete (Parameter :id)
+router.put('/api/courses/:id', [CoursesController, 'update'])
+router.delete('/api/courses/:id', [CoursesController, 'destroy'])
 
-router.post('/api/courses', async ({ request, response }) => {
-  try {
-    const Course = (await import('#models/course_mongoose')).default
-    const { title, description } = request.all()
-    
-    if (!title || !description) {
-      return response.badRequest({ message: 'Title dan description wajib diisi' })
-    }
-    
-    const course = await Course.create({ title, description })
-    return response.created({ message: 'Course berhasil ditambahkan', course })
-  } catch (error) {
-    return response.internalServerError({ error: error.message })
-  }
-})
-
-
+// CHAT ROUTE
 router.post('/api/chat', [ChatController, 'handleChat'])

@@ -20,32 +20,19 @@
         /* MAIN CONTENT */
         main { flex: 1; position: relative; width: 100%; display: flex; flex-direction: column; overflow: hidden; }
 
-        /* AUTH FORMS (FLAT STRUCTURE) */
-        /* Kita atur agar form langsung di tengah tanpa wrapper penghalang */
+        /* AUTH FORMS */
         .auth-container { 
-            display: none; /* Default hidden */
-            width: 100%; 
-            max-width: 400px; 
-            background: white; 
-            padding: 40px; 
-            border-radius: 20px; 
-            box-shadow: 0 10px 30px rgba(0,0,0,0.08); 
-            text-align: center; 
-            margin: auto; /* Auto margin agar ke tengah */
+            display: none; width: 100%; max-width: 400px; background: white; 
+            padding: 40px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.08); 
+            text-align: center; margin: auto; 
         }
-        
         .auth-container input { width: 100%; padding: 14px; margin: 10px 0; border: 1px solid #dfe6e9; border-radius: 8px; background: #f8f9fa; }
         .auth-container button { width: 100%; padding: 14px; background: #6c5ce7; color: white; border: none; border-radius: 8px; cursor: pointer; margin-top: 15px; font-weight: 600; }
 
         /* DASHBOARD LAYOUT */
         #dashboard { 
-            display: none; /* Default hidden */
-            height: 100%; 
-            width: 100%;
-            padding: 20px 40px; 
-            background-color: #f4f6f9;
+            display: none; height: 100%; width: 100%; padding: 20px 40px; background-color: #f4f6f9;
         }
-
         .dashboard-grid { display: flex; gap: 30px; height: 100%; max-width: 1600px; margin: 0 auto; }
         
         /* KIRI */
@@ -56,15 +43,9 @@
 
         /* KANAN: CHAT WIDGET */
         .chat-widget {
-            flex: 1;
-            height: 95%; 
-            background: #ffffff;
-            border-radius: 24px;
-            box-shadow: 0 15px 40px rgba(0,0,0,0.1);
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-            border: 1px solid #eef2f5;
+            flex: 1; height: 95%; background: #ffffff; border-radius: 24px;
+            box-shadow: 0 15px 40px rgba(0,0,0,0.1); display: flex; flex-direction: column;
+            overflow: hidden; border: 1px solid #eef2f5;
         }
         .chat-header { padding: 20px 25px; background: linear-gradient(135deg, #6c5ce7, #a55eea); color: white; }
         .chat-body { flex: 1; overflow-y: auto; padding: 25px; background-color: #f8f9fa; display: flex; flex-direction: column; gap: 20px; }
@@ -78,8 +59,44 @@
         .ai-message { background: white; align-self: flex-start; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
         .user-message { background: #6c5ce7; color: white; align-self: flex-end; box-shadow: 0 4px 15px rgba(108, 92, 231, 0.3); }
 
-        .alert { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); padding: 12px 30px; border-radius: 50px; color: white; z-index: 1000; }
+        .alert { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); padding: 12px 30px; border-radius: 50px; color: white; z-index: 3000; }
         .alert-success { background: #00b894; } .alert-error { background: #d63031; }
+
+        /* --- STYLE BARU UNTUK MODAL EDIT --- */
+        .modal-overlay {
+            display: none; /* Hidden by default */
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.5); /* Gelap transparan */
+            z-index: 2000;
+            justify-content: center; align-items: center;
+            backdrop-filter: blur(4px);
+            animation: fadeIn 0.2s ease-out;
+        }
+
+        .modal-content {
+            background: white; padding: 30px; border-radius: 20px;
+            width: 90%; max-width: 500px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+            transform: scale(0.9);
+            animation: popUp 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
+
+        .modal-title { margin-top: 0; color: #6c5ce7; font-size: 20px; margin-bottom: 20px; display: flex; align-items: center; gap: 10px; }
+        
+        .modal-input {
+            width: 100%; padding: 12px; border: 1px solid #dfe6e9;
+            border-radius: 8px; font-size: 14px; margin-bottom: 15px;
+            background: #f8f9fa; transition: 0.2s;
+        }
+        .modal-input:focus { border-color: #6c5ce7; outline: none; background: white; box-shadow: 0 0 0 3px rgba(108, 92, 231, 0.1); }
+        
+        .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 10px; }
+        .btn-modal-cancel { background: #f1f2f6; color: #636e72; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 600; }
+        .btn-modal-save { background: #6c5ce7; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 600; }
+        .btn-modal-save:hover { background: #5b4cc4; }
+
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes popUp { to { transform: scale(1); } }
     </style>
 </head>
 <body>
@@ -153,6 +170,25 @@
 
             </div>
         </div>
+
+        <div id="editModal" class="modal-overlay">
+            <div class="modal-content">
+                <h3 class="modal-title">✏️ Edit Materi</h3>
+                <input type="hidden" id="editCourseId">
+                
+                <label style="font-size: 13px; font-weight: 600; color: #636e72;">Judul Materi</label>
+                <input type="text" id="editCourseTitle" class="modal-input" placeholder="Judul...">
+                
+                <label style="font-size: 13px; font-weight: 600; color: #636e72;">Deskripsi</label>
+                <textarea id="editCourseDesc" class="modal-input" rows="4" placeholder="Deskripsi..."></textarea>
+                
+                <div class="modal-actions">
+                    <button onclick="closeEditModal()" class="btn-modal-cancel">Batal</button>
+                    <button onclick="confirmEdit()" class="btn-modal-save">Simpan Perubahan</button>
+                </div>
+            </div>
+        </div>
+
     </main>
 
     <script src="app.js"></script>

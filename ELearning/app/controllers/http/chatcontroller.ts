@@ -4,77 +4,105 @@ import { google } from 'googleapis'
 import env from '#start/env'
 
 export default class ChatController {
-  // 1. Inisialisasi API Client
+  
   private genAI = new GoogleGenerativeAI(env.get('GEMINI_API_KEY'))
   private youtube = google.youtube({
     version: 'v3',
     auth: env.get('YOUTUBE_API_KEY'),
   })
 
-  // 2. Handler Utama Chat
   public async handleChat({ request, response }: HttpContext) {
     const { message } = request.only(['message'])
-    
-    if (!message) {
-      return response.badRequest({ message: 'Pertanyaan tidak boleh kosong' })
-    }
+    if (!message) return response.badRequest({ message: 'Input kosong' })
 
     try {
-      // Step A: Analisis Gemini untuk dapatkan Keyword
-      const keyword = await this.getSearchKeyword(message)
+      // 1. DAPATKAN ANALISIS DARI GEMINI
+      const aiAnalysis = await this.askGemini(message)
       
-      // Step B: Cari 5 Video YouTube
-      const videos = await this.searchYoutubeVideos(keyword)
+      let videos: any[] = []
 
-      // Step C: Buat kalimat pengantar
-      const botReply = `Berikut adalah 5 video rekomendasi untuk topik "${keyword}":`
+      // 2. LOGIKA VIDEO
+      // Kita cari video jika AI menyarankan (needs_video = true)
+      // ATAU jika parsing gagal tapi kita mendeteksi keyword 'tutorial' di pertanyaan user
+      if (aiAnalysis.needs_video && aiAnalysis.video_keyword) {
+        videos = await this.searchYoutubeVideos(aiAnalysis.video_keyword)
+      }
 
-      // Step D: Kirim ke Frontend
+      // 3. KIRIM JAWABAN
       return response.ok({
-        reply: botReply,
+        reply: aiAnalysis.text_response, // Ini sekarang pasti berisi penjelasan
         videos: videos, 
       })
 
     } catch (error) {
-      console.error(error)
-      return response.internalServerError({ message: 'Terjadi kesalahan pada server AI.' })
+      console.error("🔥 SYSTEM ERROR:", error)
+      return response.internalServerError({ message: 'Server sedang sibuk.' })
     }
   }
 
-  // --- PRIVATE HELPER METHODS ---
+  // --- HELPER GEMINI: ROBUST VERSION ---
+  private async askGemini(userMessage: string) {
+    const model = this.genAI.getGenerativeModel({ model: 'gemini-pro' })
 
-  private async getSearchKeyword(userMessage: string): Promise<string> {
-    const model = this.genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
-    
-    // Prompt kita buat simple agar hemat token & cepat
-    const prompt = `Extract the main technical topic from: "${userMessage}". Return ONLY one search keyword for YouTube. Example: "Python loop tutorial".`
+    const prompt = `
+      Kamu adalah guru E-Learning. Pertanyaan Siswa: "${userMessage}"
+      
+      Instruksi:
+      1. Jawab pertanyaan siswa dengan LENGKAP dan JELAS (Bahasa Indonesia).
+      2. Format jawabanmu WAJIB JSON seperti ini:
+      {
+        "text_response": "Tulis penjelasan panjangmu disini...",
+        "needs_video": true/false (True jika butuh tutorial visual),
+        "video_keyword": "keyword pencarian youtube"
+      }
+    `
     
     try {
       const result = await model.generateContent(prompt)
-      return result.response.text().trim()
+      let text = result.response.text()
+
+      // Bersihkan Markdown ```json dan ```
+      text = text.replace(/```json/g, '').replace(/```/g, '').trim()
+      
+      // COBA PARSE JSON
+      return JSON.parse(text)
+
     } catch (e) {
-      return userMessage // Fallback: pakai chat asli user jika Gemini error
+      console.warn("⚠️ JSON Parse Gagal, mengambil Raw Text...", e)
+      
+      // --- PERBAIKAN UTAMA DISINI ---
+      // Jika JSON gagal diparse, jangan buang teksnya!
+      // Kemungkinan besar Gemini menjawab dengan teks biasa (bukan JSON).
+      // Jadi kita pakai teks itu sebagai jawabannya.
+      
+      const isTutorial = userMessage.toLowerCase().match(/(tutorial|cara|belajar|video|praktek)/)
+
+      return {
+        // Kita ambil teks mentah dari Gemini sebagai jawaban (ini yang tadi hilang)
+        text_response: e instanceof SyntaxError ? result.response.text().replace(/```json/g, '').replace(/```/g, '') : "Maaf, saya tidak dapat menjawab saat ini.",
+        
+        // Kita tentukan kebutuhan video secara manual
+        needs_video: !!isTutorial,
+        video_keyword: userMessage
+      }
     }
   }
 
+  // --- HELPER YOUTUBE ---
   private async searchYoutubeVideos(keyword: string) {
     try {
       const res = await this.youtube.search.list({
         part: ['snippet'],
         q: keyword,
-        maxResults: 5, // <--- INI BAGIAN YANG DIUBAH (JADI 5)
+        maxResults: 5, 
         type: ['video'],
       })
-
-      // Bersihkan data agar frontend menerima JSON yang rapi
-      // Kita tambahkan ': any' agar TypeScript tidak rewel
       return res.data.items?.map((item: any) => ({
         title: item.snippet?.title,
         thumbnail: item.snippet?.thumbnails?.medium?.url,
         url: `https://www.youtube.com/watch?v=${item.id?.videoId}`,
       })) || []
     } catch (e) {
-      console.error('YouTube API Error', e)
       return []
     }
   }

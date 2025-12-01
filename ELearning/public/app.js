@@ -5,8 +5,11 @@ let authToken = null;
 // --- INITIALIZATION ---
 document.addEventListener('DOMContentLoaded', function() {
     const token = localStorage.getItem('authToken');
+    const userStr = localStorage.getItem('user'); // Simpan data user juga
+    
     if (token) {
         authToken = token;
+        if (userStr) currentUser = JSON.parse(userStr);
         showDashboard();
         updateNavigation(true);
     } else {
@@ -14,35 +17,21 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-// --- NAVIGATION ---
+// --- NAVIGATION & UI HELPERS ---
 function hideAllSections() {
     ['loginForm', 'registerForm', 'dashboard'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.style.display = 'none';
     });
 }
-
-function showLogin() {
-    hideAllSections();
-    document.getElementById('loginForm').style.display = 'block';
-}
-
-function showRegister() {
-    hideAllSections();
-    document.getElementById('registerForm').style.display = 'block';
-}
-
-function showDashboard() {
-    hideAllSections();
-    document.getElementById('dashboard').style.display = 'block';
-    loadCourses();
-}
+function showLogin() { hideAllSections(); document.getElementById('loginForm').style.display = 'block'; }
+function showRegister() { hideAllSections(); document.getElementById('registerForm').style.display = 'block'; }
+function showDashboard() { hideAllSections(); document.getElementById('dashboard').style.display = 'block'; loadCourses(); }
 
 function updateNavigation(isLoggedIn) {
     const dashboardBtn = document.getElementById('dashboardBtn');
     const logoutBtn = document.getElementById('logoutBtn');
     const navButtons = document.querySelectorAll('nav button:not(#dashboardBtn):not(#logoutBtn)');
-
     if (isLoggedIn) {
         navButtons.forEach(btn => btn.style.display = 'none');
         if(dashboardBtn) dashboardBtn.style.display = 'inline-block';
@@ -69,14 +58,17 @@ async function login(event) {
         const data = await res.json();
         if (res.ok) {
             authToken = data.token;
+            currentUser = data.user; // Simpan object user
             localStorage.setItem('authToken', authToken);
+            localStorage.setItem('user', JSON.stringify(currentUser)); // Simpan ke LocalStorage biar persistent
+            
             showAlert('Login Berhasil!', 'success');
             updateNavigation(true);
             showDashboard();
         } else {
             showAlert(data.message || 'Login Gagal', 'error');
         }
-    } catch (e) { showAlert('Error koneksi server', 'error'); }
+    } catch (e) { showAlert('Error server', 'error'); }
 }
 
 async function register(event) {
@@ -91,24 +83,26 @@ async function register(event) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ name, email, password })
         });
-        const data = await res.json();
         if (res.ok) {
             showAlert('Registrasi berhasil, silakan login', 'success');
             showLogin();
         } else {
+            const data = await res.json();
             showAlert(data.message || 'Gagal Register', 'error');
         }
-    } catch (e) { showAlert('Error koneksi server', 'error'); }
+    } catch (e) { showAlert('Error server', 'error'); }
 }
 
 function logout() {
     authToken = null;
+    currentUser = null;
     localStorage.removeItem('authToken');
+    localStorage.removeItem('user');
     updateNavigation(false);
     showLogin();
 }
 
-// --- COURSES ---
+// --- COURSE MANAGEMENT (CRUD) ---
 async function loadCourses() {
     try {
         const res = await fetch(`${API_BASE}/api/courses`);
@@ -117,12 +111,30 @@ async function loadCourses() {
         if (!list) return;
 
         if (res.ok && data.length > 0) {
-            list.innerHTML = data.map(c => `
-                <div style="background:white; padding:15px; border-radius:8px; margin-bottom:10px; border:1px solid #eee;">
-                    <h4 style="margin:0 0 5px 0;">${c.title}</h4>
-                    <p style="margin:0; color:#666; font-size:14px;">${c.description}</p>
+            list.innerHTML = data.map(c => {
+                // LOGIKA OWNER: Cek apakah ID user login == ID pembuat course
+                // Kita pakai String() untuk memastikan tipe datanya sama
+                const isOwner = currentUser && c.userId && (String(c.userId) === String(currentUser.id));
+                
+                let buttons = '';
+                if (isOwner) {
+                    buttons = `
+                        <div style="margin-top:15px; padding-top:10px; border-top:1px solid #eee; display:flex; gap:10px;">
+                            <button onclick="editCourse('${c._id}', '${c.title}', '${c.description}')" style="background:#f39c12; color:white; border:none; padding:6px 12px; border-radius:4px; cursor:pointer; font-size:12px;">Edit</button>
+                            <button onclick="deleteCourse('${c._id}')" style="background:#e74c3c; color:white; border:none; padding:6px 12px; border-radius:4px; cursor:pointer; font-size:12px;">Hapus</button>
+                        </div>
+                    `;
+                }
+
+                return `
+                <div style="background:white; padding:20px; border-radius:12px; margin-bottom:15px; border:1px solid #eee; box-shadow: 0 2px 8px rgba(0,0,0,0.03);">
+                    <h4 style="margin:0 0 8px 0; color:#2d3436; font-size:16px;">${c.title}</h4>
+                    <p style="margin:0 0 10px 0; color:#636e72; font-size:14px; line-height:1.5;">${c.description}</p>
+                    <small style="color:#b2bec3; font-size:11px;">Author: ${c.author || 'Anonymous'}</small>
+                    ${buttons}
                 </div>
-            `).join('');
+                `;
+            }).join('');
         } else {
             list.innerHTML = '<p style="text-align:center; color:#999;">Belum ada materi.</p>';
         }
@@ -131,36 +143,147 @@ async function loadCourses() {
 
 async function addCourse(event) {
     event.preventDefault();
-    if (!authToken) return showAlert('Harap login dulu', 'error');
     
+    // Cek apakah user sudah login dan datanya ada
+    if (!authToken || !currentUser) {
+        showAlert('Harap login dulu', 'error');
+        return;
+    }
+
     const title = document.getElementById('courseTitle').value;
     const description = document.getElementById('courseDescription').value;
 
     try {
         const res = await fetch(`${API_BASE}/api/courses`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
-            body: JSON.stringify({ title, description })
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${authToken}`
+            },
+            body: JSON.stringify({ 
+                title, 
+                description,
+                // PERBAIKAN: Kirim ID user secara manual
+                userId: currentUser.id || currentUser._id 
+            })
         });
+
+        const data = await res.json();
+
         if (res.ok) {
             showAlert('Materi ditambahkan', 'success');
-            document.querySelector('.course-form form').reset();
+            // Reset form
+            const form = document.querySelector('.course-form form');
+            if (form) form.reset();
+            
             loadCourses();
+        } else {
+            showAlert(data.message || 'Gagal menambahkan materi', 'error');
         }
-    } catch (e) { showAlert('Gagal menambah materi', 'error'); }
+    } catch (e) {
+        console.error(e);
+        showAlert('Error koneksi', 'error');
+    }
 }
 
-// --- CHATBOT (AI + YOUTUBE) ---
+// --- FUNGSI UPDATE (PERBAIKAN: Kirim userId) ---
+// --- 1. Fungsi Buka Modal (Dipanggil tombol Edit) ---
+function editCourse(id, currentTitle, currentDesc) {
+    document.getElementById('editCourseId').value = id;
+    document.getElementById('editCourseTitle').value = currentTitle;
+    document.getElementById('editCourseDesc').value = currentDesc;
+    
+    // Tampilkan Modal
+    document.getElementById('editModal').style.display = 'flex';
+}
+
+// --- 2. Fungsi Tutup Modal ---
+function closeEditModal() {
+    document.getElementById('editModal').style.display = 'none';
+}
+
+// --- 3. Fungsi Simpan (Dipanggil tombol Simpan di Modal) ---
+async function confirmEdit() {
+    const id = document.getElementById('editCourseId').value;
+    const newTitle = document.getElementById('editCourseTitle').value;
+    const newDesc = document.getElementById('editCourseDesc').value;
+
+    if (!newTitle || !newDesc) return showAlert('Semua field harus diisi', 'error');
+
+    try {
+        const res = await fetch(`${API_BASE}/api/courses/${id}`, {
+            method: 'PUT',
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${authToken}`
+            },
+            body: JSON.stringify({ 
+                title: newTitle, 
+                description: newDesc,
+                userId: currentUser.id || currentUser._id 
+            })
+        });
+
+        const data = await res.json();
+        
+        if (res.ok) {
+            showAlert('Berhasil diupdate!', 'success');
+            closeEditModal();
+            loadCourses();
+        } else {
+            showAlert(data.message || 'Gagal update', 'error');
+        }
+    } catch (e) { showAlert('Error koneksi', 'error'); }
+}
+
+// Tutup modal jika klik di luar kotak
+window.onclick = function(event) {
+    const modal = document.getElementById('editModal');
+    if (event.target == modal) closeEditModal();
+}
+
+// --- FUNGSI DELETE (PERBAIKAN: Kirim userId via Body jika backend butuh, atau biarkan) ---
+// Note: Untuk DELETE biasanya params ID dan Token di header sudah cukup untuk backend yg kita buat.
+// Tapi jika error, pastikan backend tidak meminta body userId untuk delete.
+async function deleteCourse(id) {
+    if (confirm("Yakin hapus materi ini?")) {
+        try {
+            const res = await fetch(`${API_BASE}/api/courses/${id}`, {
+                method: 'DELETE',
+                headers: { 
+                    'Content-Type': 'application/json', // Tambahkan ini
+                    'Authorization': `Bearer ${authToken}` 
+                },
+                // Kita kirim body juga untuk jaga-jaga kalau backendmu butuh validasi userId ketat
+                body: JSON.stringify({ 
+                    userId: currentUser.id || currentUser._id 
+                })
+            });
+
+            const data = await res.json();
+
+            if (res.ok) {
+                showAlert('Berhasil dihapus', 'success');
+                loadCourses();
+            } else {
+                showAlert(data.message || 'Gagal hapus', 'error');
+            }
+        } catch (e) { 
+            console.error(e);
+            showAlert('Error koneksi', 'error'); 
+        }
+    }
+}
+
+// --- CHATBOT ---
 async function sendMessage(event) {
     if(event) event.preventDefault();
-    
     const input = document.getElementById('chatInput');
     const message = input.value.trim();
     if (!message) return;
 
     addMessage(message, 'user');
     input.value = '';
-
     const loadingId = addMessage('Sedang mencari video...', 'ai');
 
     try {
@@ -171,23 +294,20 @@ async function sendMessage(event) {
         });
         const data = await res.json();
         
-        // Hapus loading
         const loadingEl = document.getElementById(loadingId);
         if(loadingEl) loadingEl.remove();
 
         if (res.ok) {
             addMessage(data.reply, 'ai');
-
-            // Render Video 16:9
             if (data.videos && data.videos.length > 0) {
                 const videoHtml = data.videos.map(v => `
-                    <div style="margin-top:12px; background:white; border-radius:10px; overflow:hidden; border:1px solid #eee;">
+                    <div style="margin-top:10px; background:white; border-radius:8px; overflow:hidden; border:1px solid #eee;">
                         <a href="${v.url}" target="_blank" style="text-decoration:none; display:block;">
                             <div style="width:100%; aspect-ratio:16/9; background:#000;">
                                 <img src="${v.thumbnail}" style="width:100%; height:100%; object-fit:cover;">
                             </div>
                             <div style="padding:10px;">
-                                <p style="font-size:13px; font-weight:600; color:#333; margin:0; line-height:1.4;">📺 ${v.title}</p>
+                                <p style="font-size:12px; font-weight:600; color:#333; margin:0;">📺 ${v.title}</p>
                             </div>
                         </a>
                     </div>
@@ -205,26 +325,21 @@ async function sendMessage(event) {
 function addMessage(content, type, isHtml = false) {
     const container = document.getElementById('chatMessages');
     if(!container) return;
-
     const div = document.createElement('div');
     div.className = `message ${type}-message`;
     div.id = 'msg-' + Date.now();
     
     if(isHtml) {
         div.innerHTML = content;
-        div.style.background = 'transparent';
-        div.style.padding = 0;
-        div.style.boxShadow = 'none';
+        div.style.background = 'transparent'; div.style.padding = 0; div.style.boxShadow = 'none';
     } else {
         div.textContent = content;
     }
-    
     container.appendChild(div);
     container.scrollTop = container.scrollHeight;
     return div.id;
 }
 
-// --- UTILS ---
 function showAlert(msg, type) {
     const alert = document.createElement('div');
     alert.className = `alert alert-${type}`;
