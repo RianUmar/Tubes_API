@@ -113,7 +113,6 @@ async function loadCourses() {
         if (res.ok && data.length > 0) {
             list.innerHTML = data.map(c => {
                 // LOGIKA OWNER: Cek apakah ID user login == ID pembuat course
-                // Kita pakai String() untuk memastikan tipe datanya sama
                 const isOwner = currentUser && c.userId && (String(c.userId) === String(currentUser.id));
                 
                 let buttons = '';
@@ -143,66 +142,48 @@ async function loadCourses() {
 
 async function addCourse(event) {
     event.preventDefault();
+    if (!authToken) return showAlert('Harap login dulu', 'error');
     
-    // Cek apakah user sudah login dan datanya ada
-    if (!authToken || !currentUser) {
-        showAlert('Harap login dulu', 'error');
-        return;
-    }
-
     const title = document.getElementById('courseTitle').value;
     const description = document.getElementById('courseDescription').value;
 
     try {
         const res = await fetch(`${API_BASE}/api/courses`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${authToken}`
+            headers: { 
+                'Content-Type': 'application/json', 
+                'Authorization': `Bearer ${authToken}` 
             },
             body: JSON.stringify({ 
                 title, 
                 description,
-                // PERBAIKAN: Kirim ID user secara manual
-                userId: currentUser.id || currentUser._id 
+                userId: currentUser.id || currentUser._id // Kirim User ID
             })
         });
-
         const data = await res.json();
-
+        
         if (res.ok) {
             showAlert('Materi ditambahkan', 'success');
-            // Reset form
-            const form = document.querySelector('.course-form form');
-            if (form) form.reset();
-            
+            document.querySelector('.course-form form').reset();
             loadCourses();
         } else {
-            showAlert(data.message || 'Gagal menambahkan materi', 'error');
+            showAlert(data.message || 'Gagal', 'error');
         }
-    } catch (e) {
-        console.error(e);
-        showAlert('Error koneksi', 'error');
-    }
+    } catch (e) { showAlert('Gagal menambah materi', 'error'); }
 }
 
-// --- FUNGSI UPDATE (PERBAIKAN: Kirim userId) ---
-// --- 1. Fungsi Buka Modal (Dipanggil tombol Edit) ---
+// --- FITUR UPDATE (MODAL) ---
 function editCourse(id, currentTitle, currentDesc) {
     document.getElementById('editCourseId').value = id;
     document.getElementById('editCourseTitle').value = currentTitle;
     document.getElementById('editCourseDesc').value = currentDesc;
-    
-    // Tampilkan Modal
-    document.getElementById('editModal').style.display = 'flex';
+    document.getElementById('editModal').style.display = 'flex'; // Buka Modal
 }
 
-// --- 2. Fungsi Tutup Modal ---
 function closeEditModal() {
     document.getElementById('editModal').style.display = 'none';
 }
 
-// --- 3. Fungsi Simpan (Dipanggil tombol Simpan di Modal) ---
 async function confirmEdit() {
     const id = document.getElementById('editCourseId').value;
     const newTitle = document.getElementById('editCourseTitle').value;
@@ -225,9 +206,8 @@ async function confirmEdit() {
         });
 
         const data = await res.json();
-        
         if (res.ok) {
-            showAlert('Berhasil diupdate!', 'success');
+            showAlert('Berhasil update!', 'success');
             closeEditModal();
             loadCourses();
         } else {
@@ -236,42 +216,32 @@ async function confirmEdit() {
     } catch (e) { showAlert('Error koneksi', 'error'); }
 }
 
-// Tutup modal jika klik di luar kotak
+// Tutup modal jika klik luar
 window.onclick = function(event) {
     const modal = document.getElementById('editModal');
     if (event.target == modal) closeEditModal();
 }
 
-// --- FUNGSI DELETE (PERBAIKAN: Kirim userId via Body jika backend butuh, atau biarkan) ---
-// Note: Untuk DELETE biasanya params ID dan Token di header sudah cukup untuk backend yg kita buat.
-// Tapi jika error, pastikan backend tidak meminta body userId untuk delete.
+// --- FITUR DELETE ---
 async function deleteCourse(id) {
     if (confirm("Yakin hapus materi ini?")) {
         try {
             const res = await fetch(`${API_BASE}/api/courses/${id}`, {
                 method: 'DELETE',
                 headers: { 
-                    'Content-Type': 'application/json', // Tambahkan ini
+                    'Content-Type': 'application/json',
                     'Authorization': `Bearer ${authToken}` 
                 },
-                // Kita kirim body juga untuk jaga-jaga kalau backendmu butuh validasi userId ketat
-                body: JSON.stringify({ 
-                    userId: currentUser.id || currentUser._id 
-                })
+                body: JSON.stringify({ userId: currentUser.id || currentUser._id })
             });
-
             const data = await res.json();
-
             if (res.ok) {
                 showAlert('Berhasil dihapus', 'success');
                 loadCourses();
             } else {
                 showAlert(data.message || 'Gagal hapus', 'error');
             }
-        } catch (e) { 
-            console.error(e);
-            showAlert('Error koneksi', 'error'); 
-        }
+        } catch (e) { showAlert('Error koneksi', 'error'); }
     }
 }
 
@@ -284,7 +254,7 @@ async function sendMessage(event) {
 
     addMessage(message, 'user');
     input.value = '';
-    const loadingId = addMessage('Sedang mencari video...', 'ai');
+    const loadingId = addMessage('Sedang mencari...', 'ai'); // Teks loading singkat
 
     try {
         const res = await fetch(`${API_BASE}/api/chat`, {
