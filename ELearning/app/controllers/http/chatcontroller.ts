@@ -1,11 +1,11 @@
 import type { HttpContext } from '@adonisjs/core/http'
-import { GoogleGenerativeAI } from '@google/generative-ai'
 import { google } from 'googleapis'
 import env from '#start/env'
 
 export default class ChatController {
   
-  private genAI = new GoogleGenerativeAI(env.get('GEMINI_API_KEY'))
+  private apiKey = env.get('GEMINI_API_KEY')
+  
   private youtube = google.youtube({
     version: 'v3',
     auth: env.get('YOUTUBE_API_KEY'),
@@ -13,78 +13,92 @@ export default class ChatController {
 
   public async handleChat({ request, response }: HttpContext) {
     const { message } = request.only(['message'])
+    
+    // Validasi input
     if (!message) return response.badRequest({ message: 'Input kosong' })
 
     try {
-      // 1. DAPATKAN ANALISIS DARI GEMINI
-      const aiAnalysis = await this.askGemini(message)
+      // 1. LOGIKA MANUAL: Cek apakah user minta video?
+      const isTutorial = message.toLowerCase().match(/(tutorial|cara|belajar|video|praktek|install|buat|bikin|langkah)/);
+      const videoKeyword = isTutorial ? message : null;
+
+      // 2. MINTA PENJELASAN TEKS (Pakai fungsi Smart)
+      const textResponse = await this.askGeminiSmart(message);
       
       let videos: any[] = []
 
-      // 2. LOGIKA VIDEO
-      // Kita cari video jika AI menyarankan (needs_video = true)
-      // ATAU jika parsing gagal tapi kita mendeteksi keyword 'tutorial' di pertanyaan user
-      if (aiAnalysis.needs_video && aiAnalysis.video_keyword) {
-        videos = await this.searchYoutubeVideos(aiAnalysis.video_keyword)
+      // 3. CARI VIDEO (Hanya jika terdeteksi kata kunci tutorial)
+      if (videoKeyword) {
+        videos = await this.searchYoutubeVideos(videoKeyword)
       }
 
-      // 3. KIRIM JAWABAN
+      // 4. Kirim Balasan
       return response.ok({
-        reply: aiAnalysis.text_response, // Ini sekarang pasti berisi penjelasan
+        reply: textResponse,
         videos: videos, 
       })
 
     } catch (error) {
-      console.error("🔥 SYSTEM ERROR:", error)
-      return response.internalServerError({ message: 'Server sedang sibuk.' })
+      console.error("🔥 ERROR:", error)
+      return response.internalServerError({ message: 'Error: ' + error.message })
     }
   }
 
-  // --- HELPER GEMINI: ROBUST VERSION ---
-  private async askGemini(userMessage: string) {
-    const model = this.genAI.getGenerativeModel({ model: 'gemini-pro' })
-
-    const prompt = `
-      Kamu adalah guru E-Learning. Pertanyaan Siswa: "${userMessage}"
-      
-      Instruksi:
-      1. Jawab pertanyaan siswa dengan LENGKAP dan JELAS (Bahasa Indonesia).
-      2. Format jawabanmu WAJIB JSON seperti ini:
-      {
-        "text_response": "Tulis penjelasan panjangmu disini...",
-        "needs_video": true/false (True jika butuh tutorial visual),
-        "video_keyword": "keyword pencarian youtube"
-      }
-    `
-    
+  // --- FUNGSI PINTAR: Cari Model Dulu Baru Tanya ---
+  private async askGeminiSmart(userMessage: string) {
     try {
-      const result = await model.generateContent(prompt)
-      let text = result.response.text()
-
-      // Bersihkan Markdown ```json dan ```
-      text = text.replace(/```json/g, '').replace(/```/g, '').trim()
+      // LANGKAH A: Tanya Google, "Model apa yang saya punya?"
+      const listUrl = `https://generativelanguage.googleapis.com/v1beta/models?key=${this.apiKey}`;
+      const listRes = await fetch(listUrl);
       
-      // COBA PARSE JSON
-      return JSON.parse(text)
+      if (!listRes.ok) throw new Error("Gagal cek model AI");
 
-    } catch (e) {
-      console.warn("⚠️ JSON Parse Gagal, mengambil Raw Text...", e)
+      const listData: any = await listRes.json();
       
-      // --- PERBAIKAN UTAMA DISINI ---
-      // Jika JSON gagal diparse, jangan buang teksnya!
-      // Kemungkinan besar Gemini menjawab dengan teks biasa (bukan JSON).
-      // Jadi kita pakai teks itu sebagai jawabannya.
-      
-      const isTutorial = userMessage.toLowerCase().match(/(tutorial|cara|belajar|video|praktek)/)
+      // LANGKAH B: Pilih model yang cocok (bukan vision, bukan experimental)
+      const validModels = listData.models?.filter((m: any) => 
+        m.supportedGenerationMethods?.includes("generateContent") && 
+        m.name.includes("gemini") &&
+        !m.name.includes("vision")
+      );
 
-      return {
-        // Kita ambil teks mentah dari Gemini sebagai jawaban (ini yang tadi hilang)
-        text_response: e instanceof SyntaxError ? result.response.text().replace(/```json/g, '').replace(/```/g, '') : "Maaf, saya tidak dapat menjawab saat ini.",
-        
-        // Kita tentukan kebutuhan video secara manual
-        needs_video: !!isTutorial,
-        video_keyword: userMessage
+      if (!validModels || validModels.length === 0) {
+        return "Maaf, API Key kamu tidak valid untuk model chat manapun.";
       }
+
+      // Prioritaskan model 'pro' atau 'flash'
+      let selectedModel = validModels.find((m: any) => m.name.includes("flash"));
+      if (!selectedModel) selectedModel = validModels.find((m: any) => m.name.includes("pro"));
+      if (!selectedModel) selectedModel = validModels[0]; // Ambil aja yang ada
+
+      // LANGKAH C: Kirim Pertanyaan ke Model Terpilih
+      const genUrl = `https://generativelanguage.googleapis.com/v1beta/${selectedModel.name}:generateContent?key=${this.apiKey}`;
+      
+      const payload = {
+        contents: [{ parts: [{ text: `Jawab pertanyaan ini dengan Bahasa Indonesia yang jelas: "${userMessage}"` }] }]
+      };
+
+      const res = await fetch(genUrl, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+      });
+
+      if (!res.ok) {
+        if (res.status === 429) return "Maaf, kuota gratis harian API Key kamu habis.";
+        const errJson = await res.json();
+        throw new Error(`Google Error: ${JSON.stringify(errJson)}`);
+      }
+
+      const data: any = await res.json();
+      
+      if (data.candidates && data.candidates[0].content) {
+        return data.candidates[0].content.parts[0].text;
+      } else {
+        return "AI merespon tapi kosong.";
+      }
+
+    } catch (e: any) {
+      console.error("SMART FETCH ERROR:", e);
+      return `⚠️ Gagal menghubungi AI: ${e.message}`;
     }
   }
 
